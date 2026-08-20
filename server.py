@@ -315,7 +315,7 @@ def validate_chat(c, user_id, category, group_id, serie_id, book_id=None, subjec
 
 @app.get('/')
 def root():
-    return ok(nome='Chat Escola API', versao='2.0.0', status='online')
+    return ok(nome='Chat Escola API', versao='2.1.0', status='online')
 
 
 @app.get('/api/status')
