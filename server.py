@@ -6,7 +6,6 @@ import sqlite3, os, uuid, secrets, io
 from functools import wraps
 from datetime import datetime, timezone
 
-
 BASE = os.path.dirname(os.path.abspath(__file__))
 DB = os.path.join(BASE, 'chat_escola.db')
 UPLOADS = os.path.join(BASE, 'uploads')
@@ -315,7 +314,7 @@ def validate_chat(c, user_id, category, group_id, serie_id, book_id=None, subjec
 
 @app.get('/')
 def root():
-    return ok(nome='Chat Escola API', versao='2.1.0', status='online')
+    return ok(nome='Chat Escola API', versao='2.0.0', status='online')
 
 
 @app.get('/api/status')
