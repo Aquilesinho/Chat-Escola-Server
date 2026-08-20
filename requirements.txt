@@ -1,3 +1,4 @@
 Flask>=3.1,<4
 Flask-Cors>=6,<7
 Pillow>=11,<13
+gunicorn
