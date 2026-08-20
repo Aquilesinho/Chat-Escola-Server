@@ -6,6 +6,7 @@ import sqlite3, os, uuid, secrets, io
 from functools import wraps
 from datetime import datetime, timezone
 
+
 BASE = os.path.dirname(os.path.abspath(__file__))
 DB = os.path.join(BASE, 'chat_escola.db')
 UPLOADS = os.path.join(BASE, 'uploads')
