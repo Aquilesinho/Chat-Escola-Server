@@ -314,7 +314,7 @@ def validate_chat(c, user_id, category, group_id, serie_id, book_id=None, subjec
 
 @app.get('/')
 def root():
-    return ok(nome='Chat Escola API', versao='2.0.0', status='online')
+    return ok(nome='Chat Escola API', versao='2.1.0', status='online')
 
 
 @app.get('/api/status')
@@ -342,7 +342,21 @@ def register():
         return bad(problem)
     c = db()
     try:
-        c.execute('INSERT INTO usuarios VALUES (?,?,?,?,?)', (user_id, nome, hash_password(senha), image_name, now()))
+        c.execute(
+            '''
+            INSERT INTO usuarios
+            (id, nome, senha_hash, imagem, criado_em, idioma)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ''',
+            (
+                user_id,
+                nome,
+                hash_password(senha),
+                image_name,
+                now(),
+                'en'
+            )
+        )
         c.commit()
     except sqlite3.IntegrityError:
         c.close()
@@ -755,7 +769,7 @@ def not_found(e):
 
 if __name__ == '__main__':
     print('=' * 60)
-    print('CHAT ESCOLA API v2.0')
+    print('CHAT ESCOLA API v2.1')
     print('=' * 60)
     print('Servidor: http://127.0.0.1:5000')
     print('Banco:    ' + DB)
