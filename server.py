@@ -156,6 +156,17 @@ def init_db():
     CREATE INDEX IF NOT EXISTS idx_msg_capitulo ON mensagens(capitulo_id, criado_em);
     CREATE INDEX IF NOT EXISTS idx_resumos_capitulo ON resumos(capitulo_id, criado_em);
     ''')
+    # Migração: versões antigas do banco não tinham idioma.
+    colunas = {
+        row['name']
+        for row in c.execute("PRAGMA table_info(usuarios)").fetchall()
+    }
+
+    if 'idioma' not in colunas:
+        c.execute(
+            "ALTER TABLE usuarios ADD COLUMN idioma TEXT NOT NULL DEFAULT 'en'"
+        )
+
     c.commit()
     c.close()
 
@@ -198,7 +209,12 @@ def login_required(fn):
 
 
 def user_json(u):
-    return {'id': u['id'], 'nome': u['nome'], 'imagem': u['imagem']}
+    return {
+        'id': u['id'],
+        'nome': u['nome'],
+        'imagem': u['imagem'],
+        'idioma': u['idioma'] if 'idioma' in u.keys() else 'en'
+    }
 
 
 def hash_password(s):
@@ -365,6 +381,122 @@ def me(u):
                           WHERE usuario_series.usuario_id=? ORDER BY grupos.nome, series.nome''', (u['id'],)).fetchall()
     c.close()
     return ok(usuario=user_json(u), grupos=[dict(x) for x in groups], series=[dict(x) for x in series])
+
+
+@app.put('/api/me')
+@login_required
+def update_me(u):
+    multipart = (
+        request.content_type
+        and request.content_type.startswith('multipart/form-data')
+    )
+
+    d = request.form if multipart else (request.get_json(silent=True) or {})
+
+    nome = str(d.get('nome', u['nome'])).strip()
+    senha = str(d.get('senha', ''))
+    idioma = str(d.get('idioma', u['idioma'] if 'idioma' in u.keys() else 'en')).strip().lower()
+
+    idiomas_validos = {'pt', 'en', 'es'}
+
+    if not 2 <= len(nome) <= 30:
+        return bad('O nome precisa ter entre 2 e 30 caracteres.')
+
+    if idioma not in idiomas_validos:
+        return bad('Idioma inválido. Use pt, en ou es.')
+
+    if senha and not 6 <= len(senha) <= 200:
+        return bad('A senha precisa ter entre 6 e 200 caracteres.')
+
+    remover_imagem = str(d.get('remover_imagem', '')).lower() in {
+        '1', 'true', 'sim', 'yes'
+    }
+
+    nova_imagem = request.files.get('imagem') if multipart else None
+
+    c = db()
+
+    try:
+        if nome != u['nome']:
+            existe = c.execute(
+                'SELECT 1 FROM usuarios WHERE nome=? COLLATE NOCASE AND id<>?',
+                (nome, u['id'])
+            ).fetchone()
+
+            if existe:
+                c.close()
+                return bad('Esse nome de usuário já está em uso.', 409)
+
+        imagem_atual = u['imagem']
+        imagem_final = imagem_atual
+
+        if remover_imagem:
+            imagem_final = None
+
+        if nova_imagem and nova_imagem.filename:
+            imagem_final, problem = save_image(nova_imagem, u['id'])
+
+            if problem:
+                c.close()
+                return bad(problem)
+
+        campos = [
+            'nome=?',
+            'imagem=?',
+            'idioma=?'
+        ]
+
+        valores = [
+            nome,
+            imagem_final,
+            idioma
+        ]
+
+        if senha:
+            campos.append('senha_hash=?')
+            valores.append(hash_password(senha))
+
+        valores.append(u['id'])
+
+        c.execute(
+            'UPDATE usuarios SET ' + ', '.join(campos) + ' WHERE id=?',
+            valores
+        )
+
+        c.commit()
+
+        atualizado = c.execute(
+            'SELECT * FROM usuarios WHERE id=?',
+            (u['id'],)
+        ).fetchone()
+
+        c.close()
+
+        # Remove a imagem antiga somente depois que a atualização deu certo.
+        if (
+            imagem_atual
+            and imagem_atual != imagem_final
+            and os.path.exists(os.path.join(UPLOADS, imagem_atual))
+        ):
+            try:
+                os.remove(os.path.join(UPLOADS, imagem_atual))
+            except OSError:
+                pass
+
+        return ok(
+            mensagem='Perfil atualizado com sucesso.',
+            usuario=user_json(atualizado)
+        )
+
+    except sqlite3.IntegrityError:
+        c.rollback()
+        c.close()
+        return bad('Esse nome de usuário já está em uso.', 409)
+
+    except Exception:
+        c.rollback()
+        c.close()
+        return bad('Não foi possível atualizar o perfil.', 500)
 
 
 @app.post('/api/logout')
@@ -632,6 +764,7 @@ if __name__ == '__main__':
     print('POST /api/register')
     print('POST /api/login')
     print('GET  /api/me')
+    print('PUT  /api/me')
     print('POST /api/logout')
     print('POST /api/grupos')
     print('POST /api/grupos/<id>/entrar')
